@@ -4,40 +4,34 @@ using System.Text;
 using ShapeCalculation.adapter.dto;
 using ShapeCalculation.util;
 using ShapeCalculation.adapter.exception;
+using ShapeCalculation.adapter.validation;
+using ShapeCalculation.config;
+using System.Globalization;
 
 namespace ShapeCalculation.adapter
 {
-    class ControllerShape : Input
+    public class ControllerShape : ValidationInvoker, ManageInput
     {
-        private List<Double> values;
-
-        public ControllerShape() {
-            this.values = new List<Double>();
+        private InputDto inputDto;
+        private InputAdapterDto inputAdapterDto;
+        private Shape shape;
+        public ControllerShape(InputDto inputDto) {
+            this.inputAdapterDto = new InputAdapterDto();
+            this.inputDto = inputDto;
+            
         }
 
-        public double getCalculatedValue(InputDto input)
+        public double getCalculatedValue()
         {
-            convertedSidesToDouble(input.Values);
-
-            validateAmountOfSides(input);
+            try { invokeValidations(); } 
+            catch (Exception e) { throw e; }
 
             Factory factory = new FactoryShape();
 
-            Shape shape = factory.create(input.ShapeName, values);
+            shape = factory.create(inputAdapterDto);
 
-            if (isAreaOperation(input.Operation))
-            {
-                shape.calculateArea();
-                return shape.getArea();
-            }
-            else if (isPerimeterOperation(input.Operation))
-            {
-                shape.calculatePerimeter();
-                return shape.getPerimeter();
-            }
-            else {
-                throw new InvalidOperationNameException();
-            }
+            return isAreaOperation(inputAdapterDto.Operation) ? callAreaCalculation() : callPerimeterCalculation();
+            
         }
 
         private bool isAreaOperation(String operation) {
@@ -51,31 +45,35 @@ namespace ShapeCalculation.adapter
                 StringComparison.InvariantCultureIgnoreCase));
         }
 
-        private void convertedSidesToDouble(String values) {
+        private void addValuesFromInputToAdapter() {
 
-            String[] splitedValues = values.Split(",");
+            inputAdapterDto.Operation = inputDto.Operation;
+            inputAdapterDto.ShapeName = inputDto.ShapeName;
+            String[] splitedValues = inputDto.Values.Split(",");
 
             foreach(String s in splitedValues) {
-                this.values.Add(Convert.ToDouble(s));
+                this.inputAdapterDto.Values.Add(double.Parse(s, CultureInfo.InvariantCulture));
             }
             
         }
 
-        private void validateAmountOfSides(InputDto input) {
+        private double callAreaCalculation() {
+            shape.calculateArea();
+            return shape.getArea();
+        }
 
-            String shapeName = input.ShapeName;
+        private double callPerimeterCalculation()
+        {
+            shape.calculatePerimeter();
+            return shape.getPerimeter();
+        }
 
-            if (shapeName.Equals(ApplicationConstants.ShapeName.SQUARE,
-                StringComparison.InvariantCultureIgnoreCase) && this.values.Count != 1 ||
-                    shapeName.Equals(ApplicationConstants.ShapeName.TRIANGLE,
-                    StringComparison.InvariantCultureIgnoreCase) && this.values.Count != 3 ||
-                        shapeName.Equals(ApplicationConstants.ShapeName.TRIANGLE,
-                        StringComparison.InvariantCultureIgnoreCase) && this.values.Count != 2
-                ) {
-
-                throw new InvalidAmountOfSidesException(shapeName);
-            }
-
+        protected override void invokeValidations()
+        {
+            inputDto.callValidations();
+            addValuesFromInputToAdapter();
+            ModuleConfig.getValidateAdapter().ForEach(val => val.execute(inputAdapterDto));
+            
         }
     }
 }
